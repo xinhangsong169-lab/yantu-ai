@@ -1,0 +1,78 @@
+const SOURCE = 'https://www.ncss.cn/ncss/zt/gqzp2026.shtml';
+const BLOCKED = /(zhipin|zhaopin\.com|51job|liepin|lagou|bosszhipin|kanzhun|veryeast|jobui|yingjiesheng|shixiseng)/i;
+const cache = new Map();
+
+function unescapeHtml(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .trim();
+}
+
+function isoOf(value) {
+  const match = String(value || '').match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (!match) return '';
+  return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`;
+}
+
+function todayISO() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+}
+
+function parseList(html) {
+  const start = String(html || '').indexOf('[{"xh"');
+  const end = start >= 0 ? html.indexOf('}]', start) : -1;
+  if (start < 0 || end < 0) return [];
+  try {
+    return JSON.parse(html.slice(start, end + 2));
+  } catch {
+    return [];
+  }
+}
+
+export async function searchOfficialNotices(profile = {}) {
+  const major = profile.major || '计算机';
+  const query = `${major} 国企 央企 校园招聘 官网通知`;
+  const cached = cache.get('official');
+  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return { ...cached.result, query };
+  const response = await fetch(SOURCE, {
+    headers: { 'User-Agent': 'yantu-ai/0.1', 'Accept-Language': 'zh-CN,zh;q=0.9' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (!response.ok) throw new Error('官网通知没有取到');
+  const html = await response.text();
+  const today = todayISO();
+  const focus = [major, profile.direction, '计算机', '信息', '软件', '人工智能', '数字化'].filter(Boolean);
+  const notices = parseList(html)
+    .map((item) => ({
+      title: unescapeHtml(item.title).slice(0, 80),
+      company: unescapeHtml(item.company).slice(0, 40),
+      url: unescapeHtml(item.link),
+      snippet: [item.zphDate, item.yjtggws ? `预计岗位 ${item.yjtggws}` : ''].filter(Boolean).join(' · '),
+      salary: '',
+      degree: '',
+      location: '',
+      kind: 'notice',
+      endAt: isoOf(item.endDate)
+    }))
+    .filter((item) => item.title && item.url.startsWith('http') && !BLOCKED.test(item.url))
+    .filter((item) => !item.endAt || item.endAt >= today)
+    .map((item) => {
+      const reasons = ['国家大学生就业服务平台公布的国企招聘通知'];
+      let score = 4;
+      if (/mp\.weixin\.qq\.com/.test(item.url)) score -= 3;
+      for (const token of focus) {
+        if (token.length >= 2 && `${item.title}${item.company}`.includes(token)) {
+          score += 3;
+          reasons.push(`通知里写到${token}`);
+        }
+      }
+      return { ...item, score, reasons: [...new Set(reasons)].slice(0, 3), gaps: [] };
+    })
+    .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'zh'))
+    .slice(0, 8);
+  const result = { query, source: '国家大学生就业服务平台', jobs: notices };
+  if (notices.length) cache.set('official', { at: Date.now(), result });
+  return result;
+}
