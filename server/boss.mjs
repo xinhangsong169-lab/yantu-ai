@@ -1,3 +1,5 @@
+import { applyFilters, cleanCareerKeywords } from '../src/lib/career-keywords.mjs';
+
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
 function unescapeHtml(value) {
@@ -15,81 +17,137 @@ function unescapeHtml(value) {
     .trim();
 }
 
-function cleanUrl(url) {
-  const value = unescapeHtml(url).split(/[<\s]/)[0];
-  if (!value.startsWith('https://www.zhipin.com/')) return '';
-  if (value.includes('...') || value.includes('bosszhipin.com')) return '';
-  return value.replace(/\/$/, '');
+function discoverJobUrls(html) {
+  const text = String(html || '').replace(/&amp;/g, '&');
+  const ids = [...text.matchAll(/job_detail(?:%2F|\/)([A-Za-z0-9_]+)\.html/gi)].map((item) => item[1]);
+  return [...new Set(ids)].slice(0, 6).map((id) => `https://www.zhipin.com/job_detail/${id}.html`);
 }
 
-function cleanTitle(title) {
-  return unescapeHtml(title)
-    .replace(/^「+|」+$/g, '')
-    .replace(/」?\s*-?\s*BOSS直聘.*$/i, '')
-    .replace(/招聘信息$/, '')
-    .replace(/招聘工资.*/, '')
-    .replace(/职责_/, ' · ')
-    .replace(/是什么职位_.*/, '')
-    .replace(/有前途吗_.*/, '')
-    .replace(/20\d\d年.*/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+function indexedFromTitle(title, url) {
+  const cleaned = textOf(title).replace(/^「+|」+$/g, '');
+  const matched = cleaned.match(/^(.+?)_([^_]{2,24}?)招聘/);
+  if (!matched) return null;
+  const jobTitle = matched[1].replace(/^「|」$/g, '').trim();
+  const company = matched[2].replace(/BOSS直聘.*/, '').trim();
+  if (jobTitle.length < 2 || company.length < 2) return null;
+  if (/找到约|条结果|请稍候/.test(jobTitle)) return null;
+  return {
+    title: jobTitle.slice(0, 80),
+    company: company.slice(0, 40),
+    url,
+    snippet: '',
+    salary: '',
+    degree: '',
+    location: '',
+    kind: 'job',
+    fromDetail: false,
+    indexed: true,
+    endAt: ''
+  };
 }
 
-function snippetOf(block) {
-  const text = unescapeHtml(block);
-  const cut = text.split(/推荐您搜索|WorkBuddy|用户协议/)[0];
-  return cut.replace(/^>\s*/, '').slice(0, 420);
-}
-
-function companyOf(title, snippet) {
-  const fromTitle = title.match(/[·_]\s*([\u4e00-\u9fa5A-Za-z0-9]{2,18})/);
-  if (fromTitle && !/招聘|实习生|算法|岗位|多模态|大模型|BOSS|直聘/.test(fromTitle[1])) return fromTitle[1].replace(/20\d\d.*/, '');
-  const named = snippet.match(/([\u4e00-\u9fa5A-Za-z]{2,16})\s+(?:基金|互联网|人工智能|医疗|计算机|游戏|电商)/);
-  if (!named || /BOSS|直聘/.test(named[1])) return '';
-  return named[1];
-}
-
-export function parseBossResults(html) {
+function indexedJobs(html) {
+  const text = String(html || '').replace(/&amp;/g, '&');
   const jobs = [];
   const seen = new Set();
-  for (const block of String(html || '').split('vrwrap').slice(1)) {
-    const titleMatch = block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
-    if (!titleMatch) continue;
-    const title = cleanTitle(titleMatch[1]);
-    if (!title || /找到约|条结果/.test(title)) continue;
-    const urls = [...block.matchAll(/https:\/\/www\.zhipin\.com\/[^"'<\s]+/g)].map((item) => cleanUrl(item[0])).filter(Boolean);
-    const url = urls.find((item) => item.includes('/job_detail/')) || urls.find((item) => item.includes('/zhaopin/')) || urls[0];
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    const snippet = snippetOf(block);
-    const boilerplate = /为您提供20\d\d年/.test(snippet) && !/元\/天|元\/月|岗位职责|任职要求/.test(snippet);
-    if (!/实习|校招|算法|工程师|研发|开发|研究员|视觉|多模态|NLP|机器学习/.test(title)) continue;
-    if (boilerplate && !/元\/天|岗位职责|任职要求/.test(snippet)) continue;
-    jobs.push({
-      title: title.slice(0, 72),
-      company: companyOf(title, snippet),
-      url,
-      snippet,
-      salary: (snippet.match(/\d+\s*-\s*\d+\s*元\/天|\d+\s*-\s*\d+\s*K(?:·\d+薪)?/) || [''])[0].replace(/\s+/g, ''),
-      degree: ((title.match(/博士|硕士|本科/) || snippet.match(/博士|硕士|本科/) || [''])[0]),
-      location: (snippet.match(/上海|杭州|北京|深圳|广州|南京|成都|武汉|西安|苏州/) || [''])[0],
-      kind: url.includes('/job_detail/') && !boilerplate ? 'job' : 'list',
-      boilerplate
-    });
+  for (const block of text.split(/<h[23][^>]*>/i).slice(1)) {
+    const id = block.match(/job_detail(?:%2F|\/)([A-Za-z0-9_]+)\.html/i);
+    if (!id || seen.has(id[1])) continue;
+    const plain = textOf(block.slice(0, 500));
+    const job = indexedFromTitle(plain, `https://www.zhipin.com/job_detail/${id[1]}.html`);
+    if (!job) continue;
+    seen.add(id[1]);
+    jobs.push(job);
   }
-  const specific = jobs.filter((job) => !job.boilerplate);
-  const lists = jobs.filter((job) => job.boilerplate);
-  return [...specific, ...lists].slice(0, 12);
+  return jobs;
+}
+
+function textOf(value) {
+  return unescapeHtml(String(value || '')).replace(/\s+/g, ' ').trim();
+}
+
+function salaryOf(salary) {
+  if (!salary) return '';
+  if (typeof salary === 'string') return textOf(salary).slice(0, 24);
+  const value = salary.value || salary;
+  const min = value.minValue ?? value.min;
+  const max = value.maxValue ?? value.max;
+  const unit = textOf(value.unitText || salary.unitText || '');
+  if (min && max) return `${min}-${max}${unit}`.slice(0, 24);
+  return textOf(min || max || '').slice(0, 24);
+}
+
+function locationOf(location) {
+  const place = Array.isArray(location) ? location[0] : location;
+  const address = place?.address || place;
+  return textOf(address?.addressLocality || address?.name || place?.name || '').slice(0, 20);
+}
+
+function readJobPosting(html, url) {
+  const blocks = [...String(html || '').matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)];
+  for (const block of blocks) {
+    let data;
+    try { data = JSON.parse(block[1].trim()); } catch { continue; }
+    const nodes = Array.isArray(data) ? data : [data];
+    const job = nodes.find((node) => node && (node['@type'] === 'JobPosting' || (Array.isArray(node['@type']) && node['@type'].includes('JobPosting'))));
+    if (!job) continue;
+    const title = textOf(job.title).slice(0, 80);
+    const company = textOf(typeof job.hiringOrganization === 'string' ? job.hiringOrganization : job.hiringOrganization?.name).slice(0, 40);
+    if (title.length < 2) continue;
+    const description = textOf(job.description).slice(0, 180);
+    const through = textOf(job.validThrough).slice(0, 10);
+    return {
+      title,
+      company,
+      url,
+      snippet: description,
+      salary: salaryOf(job.baseSalary),
+      degree: (description.match(/博士|硕士|本科/) || [''])[0],
+      location: locationOf(job.jobLocation),
+      kind: 'job',
+      fromDetail: true,
+      endAt: /^\d{4}-\d{2}-\d{2}$/.test(through) ? through : ''
+    };
+  }
+  return null;
+}
+
+async function readDetail(url) {
+  try {
+    const response = await fetch(url, {
+      headers: { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9', Accept: 'text/html' },
+      signal: AbortSignal.timeout(10000),
+      redirect: 'follow'
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    if ((/captcha|security-check|verify-slider/.test(html) && !html.includes('JobPosting')) || html.length < 800) return null;
+    return readJobPosting(html, url);
+  } catch {
+    return null;
+  }
+}
+
+async function fetchBing(query) {
+  const response = await fetch(`https://www.bing.com/search?q=${encodeURIComponent(`${query} site:www.zhipin.com/job_detail`)}`, {
+    headers: { 'User-Agent': UA, 'Accept-Language': 'zh-CN,zh;q=0.9' },
+    signal: AbortSignal.timeout(12000),
+    redirect: 'follow'
+  });
+  if (!response.ok) throw new Error('岗位检索没有完成');
+  return response.text();
 }
 
 export function buildJobQuery(profile = {}, track = 'intern') {
-  const city = String(profile.locations || '上海').split(/[、,，\s]/).map((item) => item.trim()).filter(Boolean)[0] || '上海';
-  const major = /计算机|软件|人工智能/.test(profile.major || '') ? '计算机' : (profile.major || '计算机');
-  const direction = profile.direction || '';
-  const focus = /多模态|检索|RAG|视觉/.test(direction) ? '多模态 算法' : '算法';
-  const kind = track === 'state' ? '国企 校招' : track === 'public' ? '校招 应届' : '实习';
-  return `${city} ${major} ${focus} ${kind} 硕士 BOSS直聘`;
+  const city = String(profile.locations || '').split(/[、,，\s]/).map((item) => item.trim()).filter(Boolean)[0] || '';
+  const major = /计算机|软件|人工智能/.test(profile.major || '') ? '计算机' : cleanCareerKeywords(profile.major).slice(0, 8);
+  const direction = String(profile.direction || '');
+  const focus = /多模态|检索|RAG|视觉/.test(direction)
+    ? '多模态 算法'
+    : (cleanCareerKeywords(direction).split(/\s+/).filter(Boolean)[0] || '算法');
+  const degree = /博士/.test(profile.degree || '') ? '博士' : /硕士/.test(profile.degree || '') ? '硕士' : '';
+  const kind = track === 'public' ? '校招' : '实习';
+  return [city, major, focus, degree, kind, 'BOSS直聘'].filter(Boolean).join(' ');
 }
 
 export function rankJobs(jobs, profile = {}) {
@@ -149,29 +207,65 @@ async function fetchSogou(query) {
   return html;
 }
 
-export async function searchBossJobs(profile, track = 'intern') {
-  const query = buildJobQuery(profile, track);
+export function searchEntry(profile = {}, track = 'intern') {
+  const query = buildJobQuery(profile, track).replace(/\s*BOSS直聘\s*$/, '');
+  return {
+    title: `按「${query}」去 BOSS 直聘查看`,
+    company: '',
+    url: `https://www.zhipin.com/web/geek/job?query=${encodeURIComponent(query)}`,
+    snippet: '服务器打不开具体岗位页。这是按当前筛选生成的检索入口，没有编造岗位、公司或薪资。',
+    salary: '',
+    degree: '',
+    location: '',
+    kind: 'search',
+    fromDetail: false,
+    indexed: false,
+    endAt: '',
+    reasons: [],
+    gaps: [],
+    score: 0
+  };
+}
+
+export async function searchBossJobs(profile, track = 'intern', filters = null) {
+  const view = applyFilters(profile, filters);
+  const query = buildJobQuery(view, track);
   const cached = cache.get(query);
   if (cached && Date.now() - cached.at < 15 * 60 * 1000) return cached.result;
-  let html = '';
-  try {
-    html = await fetchSogou(query);
-  } catch (error) {
-    if (cached) return cached.result;
-    throw error;
-  }
-  let jobs = rankJobs(parseBossResults(html).filter((job) => !job.boilerplate), profile);
-  if (jobs.length < 3) {
-    const broader = `${query.split(' ').slice(0, 2).join(' ')} 算法 ${track === 'intern' ? '实习' : '校招'} 硕士 BOSS直聘`;
-    try {
-      const more = rankJobs(parseBossResults(await fetchSogou(broader)).filter((job) => !job.boilerplate), profile);
-      const seen = new Set(jobs.map((job) => job.url));
-      jobs = [...jobs, ...more.filter((job) => !seen.has(job.url))];
-    } catch {
-      /* 第二次检索失败时保留第一次的结果 */
-    }
-  }
-  const result = { query, source: 'BOSS直聘公开检索', jobs: jobs.slice(0, 8) };
-  if (result.jobs.length) cache.set(query, { at: Date.now(), result });
+  const settled = await Promise.allSettled([fetchSogou(query), fetchBing(query)]);
+  const pages = settled.flatMap((item) => item.status === 'fulfilled' ? [item.value] : []);
+  const urls = [...new Set(pages.flatMap(discoverJobUrls))];
+  const indexed = new Map(pages.flatMap(indexedJobs).map((job) => [job.url, job]));
+  const opened = (await Promise.all(urls.map(readDetail))).filter(Boolean);
+  const openedUrls = new Set(opened.map((job) => job.url));
+  const titled = [...indexed.values()].filter((job) => !openedUrls.has(job.url));
+  const linked = urls.filter((url) => !openedUrls.has(url) && !indexed.has(url)).map((url) => ({
+    title: '岗位页这次没打开',
+    company: '',
+    url,
+    snippet: '链接是检索到的具体岗位页。页面被安全验证拦住，职位、公司和薪资都没有填写。',
+    salary: '',
+    degree: '',
+    location: '',
+    kind: 'job',
+    fromDetail: false,
+    indexed: false,
+    linked: true,
+    endAt: ''
+  }));
+  const jobs = rankJobs([...opened, ...titled, ...linked], view).slice(0, 6);
+  const result = {
+    query,
+    source: opened.length ? 'BOSS直聘岗位页' : titled.length ? 'BOSS直聘收录标题' : 'BOSS直聘岗位链接',
+    jobs,
+    notice: opened.length
+      ? ''
+      : titled.length
+        ? '岗位页被安全验证拦住了。下面只用收录页标题里的职位和公司，薪资没有填写。'
+        : linked.length
+          ? '检索到了具体岗位链接，但页面没打开。职位、公司和薪资都空着。'
+          : ''
+  };
+  if (jobs.length) cache.set(query, { at: Date.now(), result });
   return result;
 }

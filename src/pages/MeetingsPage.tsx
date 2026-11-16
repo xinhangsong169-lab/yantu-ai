@@ -5,6 +5,7 @@ import * as api from '../api';
 import type { MeetingBrief } from '../api';
 import { DayChoices } from '../components/DayChoices';
 import { Waiting } from '../components/Waiting';
+import { RunTable } from '../components/RunTable';
 import { humanDay, STATUS_LABEL, todayISO } from '../lib/dates';
 import { useWorkspace } from '../store';
 import type { MeetingDraft } from '../types';
@@ -12,6 +13,7 @@ import type { MeetingDraft } from '../types';
 export function MeetingsPage() {
   const { state, notify, refresh, pinned, openRecord } = useWorkspace();
   const [selected, setSelected] = useState('');
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [title, setTitle] = useState('本周组会');
   const [date, setDate] = useState(todayISO());
   const [projectId, setProjectId] = useState('');
@@ -85,33 +87,19 @@ export function MeetingsPage() {
   };
 
   return (
-    <div className="sheet meetings">
+    <div className={`sheet meetings compact-sheet${assistantOpen ? '' : ' assistant-closed'}`}>
       <div className="sheet-main meeting-layout">
         <header className="page-head">
           <div>
             <h1>组会</h1>
             <p>先分开导师原话、可执行任务和还不确定的问题。你确认之后才写入任务和记忆。</p>
           </div>
+          <button type="button" className="btn secondary" aria-expanded={assistantOpen} aria-controls="meeting-assistant" onClick={() => setAssistantOpen(!assistantOpen)}>
+            {assistantOpen ? '收起助手' : '打开助手'}
+          </button>
         </header>
         <div className="master">
-          <div className="list">
-            {meetings.map((meeting) => (
-              <button
-                key={meeting.id}
-                type="button"
-                className={current?.id === meeting.id && !draft ? 'list-btn active' : 'list-btn'}
-                onClick={() => {
-                  setDraft(null);
-                  setReport(null);
-                  setSelected(meeting.id);
-                }}
-              >
-                <strong>{meeting.title}</strong>
-                <span>{humanDay(meeting.date)}</span>
-              </button>
-            ))}
-            {meetings.length === 0 && <p className="quiet">还没有确认过的组会。</p>}
-          </div>
+          {meetings.length > 0 && <label className="record-switcher"><span>组会记录</span><select value={draft ? '' : current?.id || ''} onChange={(event) => { setDraft(null); setReport(null); setSelected(event.target.value); }}><option value="" disabled>选择组会</option>{meetings.map((meeting) => <option key={meeting.id} value={meeting.id}>{meeting.title} · {humanDay(meeting.date)}</option>)}</select></label>}
           <div className="record">
             {busy && <Waiting text="正在根据组会记录生成…" />}
             {draft ? (
@@ -229,7 +217,7 @@ export function MeetingsPage() {
                     <button type="button" className="btn secondary" onClick={() => void loadReport(current.id)} disabled={busy}>
                       生成下次汇报提纲
                     </button>
-                    {report && <Report brief={report} />}
+                    {report && <Report brief={report} openRecord={openRecord} />}
                   </article>
                 )}
                 <form className="stack composer-card" onSubmit={analyze}>
@@ -260,12 +248,12 @@ export function MeetingsPage() {
           </div>
         </div>
       </div>
-      <ChatPanel scope="meetings" />
+      <div id="meeting-assistant" className="assistant-panel" hidden={!assistantOpen}><ChatPanel scope="meetings" /></div>
     </div>
   );
 }
 
-function Report({ brief }: { brief: MeetingBrief }) {
+function Report({ brief, openRecord }: { brief: MeetingBrief; openRecord: (page: 'research', id: string, focus?: string) => void }) {
   return (
     <div className="report stack">
       <h3>下次汇报</h3>
@@ -295,6 +283,8 @@ function Report({ brief }: { brief: MeetingBrief }) {
         </table>
       </div>
       {brief.open.length > 0 && <p>还要问：{brief.open.join('；')}</p>}
+      <h3>本周实验</h3>
+      <RunTable rows={brief.runs || []} onOpen={(row) => openRecord('research', row.projectId, row.id)} />
       <p className="quiet">{brief.note}</p>
     </div>
   );

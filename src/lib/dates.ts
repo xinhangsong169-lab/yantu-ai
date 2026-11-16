@@ -60,6 +60,12 @@ export function startOfWeek(iso: string) {
   return addDays(iso, 1 - weekdayOf(iso));
 }
 
+export function inCurrentWeek(iso?: string, today = todayISO()) {
+  if (!iso) return false;
+  const start = startOfWeek(today);
+  return iso >= start && iso <= today;
+}
+
 export function courseOnDate(course: Course, iso: string) {
   if (course.weekday !== weekdayOf(iso)) return false;
   if (course.exdates?.includes(iso)) return false;

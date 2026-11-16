@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as api from '../api';
 import type { ScheduleAction, ToolResult } from '../api';
 import { Icon } from '../icons';
+import { RunTable } from './RunTable';
 import { Waiting } from './Waiting';
 import { humanDay } from '../lib/dates';
 import { useWorkspace } from '../store';
@@ -16,7 +17,7 @@ const TITLES: Record<string, string> = {
 };
 
 export function ChatPanel({ scope, variant = 'rail' }: { scope: Exclude<PageId, 'tasks'>; variant?: 'main' | 'rail' }) {
-  const { threads, sendChat, sending, composer, setMemoryOpen, notify, refresh } = useWorkspace();
+  const { threads, sendChat, sending, composer, setMemoryOpen, notify, refresh, openRecord } = useWorkspace();
   const [input, setInput] = useState('');
   const [query, setQuery] = useState('');
   const [result, setResult] = useState<ToolResult | null>(null);
@@ -99,8 +100,8 @@ export function ChatPanel({ scope, variant = 'rail' }: { scope: Exclude<PageId, 
           </button>
         )}
         {scope === 'career' && (
-          <button type="button" className="btn" disabled={!!running} onClick={() => run('岗位', () => api.briefJobs())}>
-            {running === '岗位' ? '正在梳理' : '梳理岗位'}
+          <button type="button" className="btn secondary" disabled={sending === scope} onClick={() => sendChat(scope, '根据我的专业、研究方向、城市和技能，说说就业方向可以怎么选。只能依据档案和这次对话里已经给出的岗位，不要新编岗位、公司或截止日期。', true)}>
+            {sending === scope ? '正在想' : '方向可以怎么选'}
           </button>
         )}
         {scope === 'workbench' && (
@@ -121,6 +122,12 @@ export function ChatPanel({ scope, variant = 'rail' }: { scope: Exclude<PageId, 
               {item.note && <p>{item.note}</p>}
             </div>
           ))}
+          {result.runs && result.runs.length > 0 && (
+            <>
+              <h3>本周实验</h3>
+              <RunTable rows={result.runs} onOpen={(row) => openRecord('research', row.projectId, row.id)} />
+            </>
+          )}
         </div>
       )}
       {scope === 'workbench' && (
@@ -129,7 +136,14 @@ export function ChatPanel({ scope, variant = 'rail' }: { scope: Exclude<PageId, 
             {messages.length === 0 && <p className="quiet">可以问实习、文献、老师的成绩，或这周的安排。</p>}
             {messages.map((message) => (
               <article key={message.id} className={`${message.role === 'user' ? 'bubble user' : 'bubble assistant'}${message.pending ? ' pending' : ''}`}>
-                {message.role === 'user' ? <p>{message.content}</p> : <AssistantStream message={message} />}
+                {message.role === 'user' ? (
+                  <>
+                    {message.cite ? <CiteChip cite={message.cite} /> : null}
+                    <p>{message.content}</p>
+                  </>
+                ) : (
+                  <AssistantStream message={message} />
+                )}
               </article>
             ))}
           </div>
@@ -195,7 +209,44 @@ export function ChatPanel({ scope, variant = 'rail' }: { scope: Exclude<PageId, 
           )}
         </>
       )}
-      {scope !== 'workbench' && (
+      {scope === 'career' && (
+        <>
+          <div className="log" ref={logRef}>
+            {messages.length === 0 && <p className="quiet">可以谈方向怎么选，也可以勾选左边还能投的岗位再汇总。</p>}
+            {messages.map((message) => (
+              <article key={message.id} className={`${message.role === 'user' ? 'bubble user' : 'bubble assistant'}${message.pending ? ' pending' : ''}`}>
+                {message.role === 'user' ? <p>{message.content}</p> : <AssistantStream message={message} />}
+              </article>
+            ))}
+          </div>
+          <form
+            className="composer"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
+            }}
+          >
+            <textarea
+              value={input}
+              rows={2}
+              placeholder="例如：算法实习和校招，我先走哪边"
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+            <div className="composer-bar">
+              <button className="btn" type="submit" disabled={sending === scope || !input.trim()}>
+                {sending === scope ? '正在回答' : '发送'}
+              </button>
+            </div>
+          </form>
+        </>
+      )}
+      {scope !== 'workbench' && scope !== 'career' && (
         <details className="followup">
           <summary>接着问一句</summary>
           <form
@@ -252,10 +303,24 @@ function waitCopy(message: ChatMessage) {
   return { text, done };
 }
 
+function CiteChip({ cite }: { cite: NonNullable<ChatMessage['cite']> }) {
+  const { openRecord } = useWorkspace();
+  return (
+    <blockquote className="source-cite">
+      <span>{cite.title}</span>
+      「{cite.quote}」
+      <button type="button" className="text-btn" onClick={() => openRecord('research', cite.projectId, cite.paperId)}>
+        回到文献
+      </button>
+    </blockquote>
+  );
+}
+
 function AssistantStream({ message }: { message: ChatMessage }) {
   const wait = waitCopy(message);
   return (
     <>
+      {message.cite ? <CiteChip cite={message.cite} /> : null}
       {message.pending ? <Waiting text={wait.text} done={wait.done} /> : null}
       {message.content ? (
         <p>

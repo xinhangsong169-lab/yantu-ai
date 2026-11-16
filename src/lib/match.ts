@@ -95,7 +95,7 @@ export function fitAnnouncement(text: string, profile: Profile, projects: Projec
     rows.push({
       item: '资格条件',
       status: 'unconfirmed',
-      detail: '公告提到政治面貌、党员或学生干部。这些不在档案里，系统不会猜测。'
+      detail: '公告提到政治面貌、党员或学生干部，档案里尚未填写。'
     });
   }
   return rows;

@@ -69,6 +69,19 @@ export function confirmMeeting(draft: MeetingDraft) {
   });
 }
 
+export type ExperimentRun = {
+  id: string;
+  projectId: string;
+  meetingId: string;
+  date: string;
+  change: string;
+  control: string;
+  metric: string;
+  delta: string;
+  flat: string;
+  next: string;
+};
+
 export type MeetingBrief = {
   title: string;
   date: string;
@@ -76,6 +89,7 @@ export type MeetingBrief = {
   open: string[];
   note: string;
   rows: { title: string; status: string; dueAt: string; evidence: string; deliverable: string }[];
+  runs: ExperimentRun[];
 };
 
 export function meetingReport(id: string) {
@@ -95,7 +109,7 @@ export type CareerAnalysis = {
   note: string;
 };
 
-export type BossJob = {
+export type CareerJob = {
   title: string;
   company: string;
   url: string;
@@ -103,14 +117,20 @@ export type BossJob = {
   salary: string;
   degree: string;
   location: string;
-  kind: 'job' | 'list' | 'notice';
+  kind: 'job' | 'list' | 'notice' | 'search';
   score: number;
   reasons: string[];
   gaps: string[];
+  fromDetail?: boolean;
+  indexed?: boolean;
+  linked?: boolean;
+  endAt?: string;
+  publishedAt?: string;
+  source?: string;
 };
 
 export type ToolItem = { title: string; meta?: string; href?: string; note?: string };
-export type ToolResult = { title: string; text: string; items?: ToolItem[] };
+export type ToolResult = { title: string; text: string; items?: ToolItem[]; runs?: ExperimentRun[] };
 
 export function lookupCourse(query: string) {
   return request<ToolResult>('/api/courses/lookup', { method: 'POST', body: JSON.stringify({ query }) });
@@ -154,10 +174,18 @@ export function briefJobs() {
   return request<ToolResult>('/api/career/brief', { method: 'POST', body: JSON.stringify({}) });
 }
 
-export function searchJobs(track: string) {
-  return request<{ id: string; query: string; source: string; jobs: BossJob[]; notice?: string }>('/api/career/search', {
+export type CareerFilters = {
+  city: string;
+  major: string;
+  direction: string;
+  degree: string;
+  skills: string;
+};
+
+export function searchJobs(track: string, filters?: CareerFilters) {
+  return request<{ id: string; query: string; source: string; jobs: CareerJob[]; notice?: string }>('/api/career/search', {
     method: 'POST',
-    body: JSON.stringify({ track })
+    body: JSON.stringify({ track, filters })
   });
 }
 

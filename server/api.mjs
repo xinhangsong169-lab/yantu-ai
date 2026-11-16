@@ -1,12 +1,14 @@
 import { COLLECTIONS } from './store.mjs';
 import { initialize } from './seed.mjs';
 import { parseTimetable, validateCourse, validDate } from './timetable.mjs';
-import { searchBossJobs } from './boss.mjs';
+import { searchOfferDaoJobs } from './offerdao.mjs';
+import { applyFilters, filterLabel, normalizeFilters } from '../src/lib/career-keywords.mjs';
 import { searchOfficialNotices } from './official.mjs';
 import { lookupCourses, briefCareer } from './tools.mjs';
 import { libraryCard, summarizePaper, textFromPdf } from './papers.mjs';
 import { composeMeeting } from './meeting-write.mjs';
-import { localPlan, normalizeActions, weekAgenda, weekBoard, workbenchIntent } from './schedule.mjs';
+import { runsForMeeting } from './research-week.mjs';
+import { workbenchIntent, weekAgenda, weekBoard, localPlan, normalizeActions } from './schedule.mjs';
 
 const json=(data,status=200)=>new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
 const uid=()=>crypto.randomUUID();
@@ -98,7 +100,7 @@ export async function buildContext(store,owner,scope,enabled=true){
   if(scope==='career'){
     for(const o of s.opportunities.slice(-5))add(o,'career','已收藏岗位',JSON.stringify(o));
     const leads=s.job_leads?.find?.(item=>item.id==='latest')||s.job_leads?.[0];
-    if(leads?.jobs?.length)contexts.push({id:'job-leads',title:'BOSS直聘检索结果',source:`按「${leads.query||'个人专业'}」检索`,domain:'career',kind:'memory',content:JSON.stringify(leads.jobs.slice(0,6))});
+    if(leads?.source==='Offer岛'&&leads?.jobs?.length)contexts.push({id:'job-leads',title:`${leads.source||'岗位'}检索结果`,source:`按「${leads.query||'个人专业'}」检索`,domain:'career',kind:'memory',content:JSON.stringify(leads.jobs.slice(0,6))});
   }
   return contexts.slice(0,45);
 }
@@ -122,7 +124,7 @@ function localAnswer(message,scope,context){
     const lead=facts.find(item=>item.id==='job-leads');
     let jobs=[]; try{jobs=JSON.parse(lead?.content||'[]');}catch{}
     const lines=jobs.slice(0,4).map((job,index)=>`${index+1}. ${job.title}${job.company?`，${job.company}`:''}${job.location?`，${job.location}`:''}${job.degree?`，${job.degree}`:''}。${(job.reasons||[]).slice(0,2).join('；')||'按专业关键词排进来的。'}`).join('\n');
-    return `${opening}\n\n专业：${p.major||'尚未填写'}；方向：${p.direction||'尚未填写'}；目标：${p.careerGoal||'尚未填写'}；城市：${p.locations||'尚未填写'}。\n\n${lines?`按这个档案，从 BOSS 直聘检索结果里优先看：\n${lines}\n\n上面是检索摘录和匹配理由，不是录用结论。档案里没有的技能，只作为准备项。`:'就业页会按你的专业直接检索 BOSS 直聘。这次还没有检索结果，先在就业页点一次检索。'}\n\n可拿来对照的科研经历：\n${facts.filter(item=>item.domain==='research').map(item=>`• ${item.title}`).join('\n')||'还没有科研项目。'}`;
+    return `${opening}\n\n专业：${p.major||'尚未填写'}；方向：${p.direction||'尚未填写'}；目标：${p.careerGoal||'尚未填写'}；城市：${p.locations||'尚未填写'}。\n\n${lines?`按这个档案，从岗位检索结果里优先看：\n${lines}\n\n可以结合岗位要求补充准备方向。`:'就业页会按筛选条件检索岗位。这次还没有检索结果，先在就业页点一次检索。'}\n\n可拿来对照的科研经历：\n${facts.filter(item=>item.domain==='research').map(item=>`• ${item.title}`).join('\n')||'还没有科研项目。'}`;
   }
   if(scope==='courses')return `${opening}\n\n${memoryText?'已确认记忆\n'+memoryText+'\n\n':''}${facts.filter(f=>f.domain==='courses').map(f=>{let c={};try{c=JSON.parse(f.content);}catch{}return `• ${f.title}：${c.start||''}–${c.end||''} ${c.location||''}；考核 ${c.grading||'待补充'}。来源：${f.source}`;}).join('\n')||'尚未导入课程。请添加课程并核对教师、周次及考核要求。'}\n\n先处理最近的作业与考试截止日期，课程信息变更时请及时更新原档案。`;
   const tasks=facts.filter(f=>f.source.startsWith('任务系统'));
@@ -284,32 +286,32 @@ function coerceVisionCourse(raw,filename){
   if(typeof weekday==='string')weekday=Number(weekday)||cn[weekday.replace(/^(星期|周)/,'')];
   return validateCourse({title:text(raw?.title,200),teacher:text(raw?.teacher,80),location:text(raw?.location,80),weekday,start:text(raw?.start,8),end:text(raw?.end,8),weeks:text(raw?.weeks,40)||'待核对',attendance:text(raw?.attendance,200)||'图片中未看清，待补充',grading:text(raw?.grading,200)||'图片中未看清，待补充',source:`课表图片识别 · ${filename||'未命名图片'} · 待确认`});
 }
-async function careerLeads(store,owner,profile,track){
+async function careerLeads(store,owner,profile,track,filters=null,env=process.env){
   const safe=['intern','public','state'].includes(track)?track:'intern';
+  const view=applyFilters(profile,filters);
   if(safe==='state'){
     try{
-      const result=await searchOfficialNotices(profile);
+      const result=await searchOfficialNotices(view);
       if(result.jobs?.length){
-        const record={id:'official',query:result.query,source:result.source,jobs:result.jobs,updatedAt:now()};
+        const record={id:'official',query:result.query,source:result.source,jobs:result.jobs,notice:result.notice||'',updatedAt:now()};
         await store.put(owner,'job_leads',record);
         return record;
       }
-    }catch{/* 官网页面这次没有读到时，只用上次的官网通知 */}
+    }catch{/* 官网页面这次没有读到时，只用同一组筛选上次的官网通知 */}
     const prior=await store.get(owner,'job_leads','official');
-    if(prior?.jobs?.length)return {...prior,stale:true,notice:'官网页面这次没有读全，下面仍是上次保存的国企招聘通知。'};
-    return {jobs:[],source:'国家大学生就业服务平台',notice:'这次没有从官网通知里抽出还在有效期内的国企或央企招聘公告。'};
+    const kept=(prior?.jobs||[]).filter(job=>!job.endAt || job.endAt>=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date()));
+    if(kept.length)return {...prior,jobs:kept,stale:true,notice:'这次没有读到新通知，下面仍是上次保存、且还在有效期内的官网通知。'};
+    return {jobs:[],query:filterLabel(view),source:'国家大学生就业服务平台',notice:'这次没有从官网通知里抽出还在有效期内的国企或央企招聘公告。'};
   }
+  let result;
   try{
-    const result=await searchBossJobs(profile,safe);
-    if(result.jobs?.length){
-      const record={id:'latest',query:result.query,source:result.source,jobs:result.jobs,updatedAt:now()};
-      await store.put(owner,'job_leads',record);
-      return record;
-    }
-  }catch{/* 公开检索被拦住时改用上次结果 */}
-  const prior=await store.get(owner,'job_leads','latest');
-  if(prior?.jobs?.length && prior.jobs.every(job=>job.kind!=='notice'))return {...prior,stale:true,notice:'检索有点挤，下面仍是按你的专业从 BOSS 直聘找出的岗位。'};
-  return {jobs:[],notice:'这次没有从 BOSS 直聘的公开结果里抽出具体岗位。'};
+    result=await searchOfferDaoJobs(view,safe,env);
+  }catch(error){
+    result={jobs:[],query:filterLabel(view),source:'Offer岛',notice:error.message||'Offer岛暂时无法访问，请稍后重试。'};
+  }
+  const record={id:'latest',query:result.query,source:result.source,jobs:result.jobs,notice:result.notice,updatedAt:now()};
+  await store.put(owner,'job_leads',record);
+  return record;
 }
 function presentTool(result){
   return {
@@ -337,14 +339,14 @@ async function workbenchBundle(store,owner,message,env){
   let raw=null;
   let voice='';
     if(intent.kind==='jobs'){
-    const leads=await careerLeads(store,owner,profile,intent.track);
+    const leads=await careerLeads(store,owner,profile,intent.track,null,env);
     raw=leads.jobs?.length
       ? briefCareer(profile,leads.jobs,await store.list(owner,'projects'))
       : {title:intent.track==='state'?'官网通知还没取到':'岗位还没检索到',text:leads.notice||'这次没有取出结果。',items:[]};
     if(leads.notice&&leads.jobs?.length)raw={...raw,text:[leads.notice,raw.text].filter(Boolean).join('\n')};
     voice=intent.track==='state'
       ? '列表是国企和央企的官网招聘通知，不是招聘平台上的岗位。你只说最相关的一条，写出发文单位和公告标题。不要编造名单外的公司、截止日期或链接。'
-      : '岗位列表来自 BOSS 直聘的公开检索，已经列在对话里。你只说最该先看的一个，以及它和专业、城市、技能哪里对得上。不要编造列表里没有的公司、薪资或链接。不要让同学先去官方入口。';
+      : '岗位列表来自 Offer岛，已经列在对话里。你只说最该先看的一个，以及它和专业、城市、技能哪里对得上。不要编造列表里没有的公司、薪资或链接。招聘状态无法确认时不要声称仍在招聘。';
   }else if(intent.kind==='literature'){
     raw=libraryCard(await store.list(owner,'papers'));
     voice='这些是同学自己上传的文献和总结。只根据列出的内容说。没有上传的论文直接说没有，不要编造。';
@@ -457,7 +459,7 @@ export async function handleApi(request,env={},store,owner){
       const profile=await store.get(owner,'profile','profile')||{};
       const leads=await store.get(owner,'job_leads','latest');
       const projects=await store.list(owner,'projects');
-      return json(briefCareer(profile,leads?.jobs||[],projects));
+      return json(briefCareer(profile,leads?.source==='Offer岛'?leads.jobs||[]:[],projects));
     }
     if(path==='/api/meetings/analyze'&&method==='POST'){const input=await body(request);await validateRefs(store,owner,input);return json({draft:await analyzeMeeting(input,env)});}
     if(path==='/api/meetings/confirm'&&method==='POST')return json(await confirmMeeting(store,owner,(await body(request)).draft));
@@ -465,21 +467,23 @@ export async function handleApi(request,env={},store,owner){
     if(report&&method==='GET'){
       const meeting=await store.get(owner,'meetings',report[1]);if(!meeting)bad('组会记录不存在',404);
       const tasks=(await store.list(owner,'tasks')).filter(t=>t.sourceType==='meeting'&&t.sourceId===meeting.id);
+      const experiments=await store.list(owner,'experiments');
       return json({
         title:meeting.title,
         date:meeting.date,
         decision:meeting.summary||'',
         open:Array.isArray(meeting.questions)?meeting.questions:[],
         rows:tasks.map(task=>({title:task.title,status:task.status,dueAt:task.dueAt||'',evidence:task.evidence||'',deliverable:task.description||''})),
-        note:'完成状态来自任务勾选，不是实验结果已经验证。'
+        runs:runsForMeeting(meeting,experiments),
+        note:'完成状态来自任务勾选。实验表只照搬科研记录，空着的指标没有补。'
       });
     }
     if(path==='/api/career/search'&&method==='POST'){
       const input=await body(request);
       const profile=await store.get(owner,'profile','profile')||{};
       const track=['intern','public','state'].includes(input.track)?input.track:'intern';
-      const leads=await careerLeads(store,owner,profile,track);
-      if(!leads.jobs?.length)bad(leads.notice||'这次没有检索到岗位',422);
+      const filters=normalizeFilters(input.filters);
+      const leads=await careerLeads(store,owner,profile,track,filters,env);
       return json(leads);
     }
     if(path==='/api/career/analyze'&&method==='POST'){const analysis=careerAnalysis(await body(request));return json({analysis,...analysis});}
@@ -488,7 +492,7 @@ export async function handleApi(request,env={},store,owner){
       if(!env.DASHSCOPE_API_KEY)bad('还没有配置视觉模型。图片不会被猜成课表，请改用 ICS、CSV 或手动添加。',422);
       const input=await body(request);
       if(typeof input.image!=='string'||!input.image.startsWith('data:image/')||input.image.length>1_700_000)bad('请上传压缩后的课表图片');
-      const generated=await cloud(env,[{role:'system',content:'你只提取图片里能看清的课程。看不清的字段留空字符串，不要猜测考勤或成绩比例。返回 JSON：{"courses":[{"title":"","teacher":"","location":"","weekday":1,"start":"08:00","end":"09:40","weeks":"","attendance":"","grading":""}],"warnings":[]}。weekday 用 1 到 7 表示周一到周日。'},{role:'user',content:[{type:'image_url',image_url:{url:input.image}},{type:'text',text:'提取这张课表，只保留能看清的信息。'}]}],true,env.AI_VISION_MODEL||'qwen-vl-plus');
+      const generated=await cloud(env,[{role:'system',content:'你只提取图片里能看清的课程。看不清的字段留空字符串，不要猜测考勤或成绩比例。返回 JSON：{"courses":[{"title":"","teacher":"","location":"","weekday":1,"start":"08:00","end":"09:40","weeks":"","attendance":"","grading":""}],"warnings":[]}。weekday 用 1 到 7 表示周一到周日。'},{role:'user',content:[{type:'image_url',image_url:{url:input.image}},{type:'text',text:'提取这张课表，只保留能看清的信息。'}]}],true,env.AI_VISION_MODEL||'qwen3-vl-plus');
       const warnings=Array.isArray(generated.warnings)?generated.warnings.map(item=>text(String(item),300)).filter(Boolean):[];
       const courses=[];
       for(const raw of Array.isArray(generated.courses)?generated.courses:[]){
@@ -512,7 +516,7 @@ export async function handleApi(request,env={},store,owner){
         courses:'先回答这门课本身：老师、上课时间、考勤、成绩比例。只提问到的那一门。',
         meetings:'先列还没做完的事，每件后面跟导师原话和日期。',
         research:'先给能做的下一步或检索到的论文。论文必须来自给出的记录，写上作者和年份。',
-        career:'先说最值得先看的一个岗位，再写它和专业、城市、技能哪里对得上、哪里还缺。'
+        career:'只讨论同学这次消息里列出的岗位和档案里的专业、方向、城市、技能。没有列出的公司、岗位和截止日期不要编。先说方向可以怎么选，再对照列出的岗位哪里贴、哪里不贴。'
       };
       const voice=bundle.voice||`回答分成两层，不要写小标题：第一句是结论，后面用两三句说明依据。依据要落到具体的课名、老师、组会日期或岗位，不写“据记录显示”“值得注意”“此外”。\n${scopeJob[scope]||scopeJob.workbench}`;
       const found=tool?`这次调到的结果：\n${tool.title}\n${tool.text}\n${(tool.items||[]).map(item=>[item.title,item.meta,item.note].filter(Boolean).join('，')).join('\n')}\n`:'';

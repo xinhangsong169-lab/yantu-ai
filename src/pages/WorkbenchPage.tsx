@@ -32,7 +32,7 @@ export function WorkbenchPage() {
             <h1>{focus.title}</h1>
             <p className="focus-meta">
               <span>{STATUS_LABEL[focus.status]}</span>
-              {focus.dueAt ? <strong>{humanDay(focus.dueAt)}前</strong> : <span>没有截止日期</span>}
+              {focus.dueAt ? <strong>计划日期：{humanDay(focus.dueAt)}</strong> : <span>没有截止日期</span>}
               {focus.dueAt && focus.dueAt < today ? <span>已过计划日期</span> : null}
             </p>
             {focus.evidence && <blockquote>依据：{focus.evidence}</blockquote>}
@@ -85,7 +85,7 @@ export function WorkbenchPage() {
               {courseTask && courseTask.sourceId === course.id && (
                 <p>
                   还没交：{courseTask.title}
-                  {courseTask.dueAt ? `，${humanDay(courseTask.dueAt)}前` : ''}
+                  {courseTask.dueAt ? `，计划日期：${humanDay(courseTask.dueAt)}` : ''}
                 </p>
               )}
             </article>

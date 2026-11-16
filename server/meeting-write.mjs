@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { writeMeeting } from './tools.mjs';
+import { runsThisWeek, experimentRun } from './research-week.mjs';
 
 const skill = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'skills/meeting-writer/SKILL.md'), 'utf8');
 const KINDS = { todos: '待办', report: '汇报稿', weekly: '周报' };
@@ -35,10 +36,12 @@ function packet(meetings, tasks, profile, experiments) {
       evidence: task.evidence || '',
       description: task.description || ''
     })),
-    experiments: experiments.slice(0, 4).map((item) => ({
+    experiments: (runsThisWeek(experiments).length ? runsThisWeek(experiments) : experiments.slice(0, 4).map(experimentRun)).map((item) => ({
       date: item.date || '',
       change: item.change || item.setup || item.title || '',
-      result: item.result || item.delta || '',
+      control: item.control || '',
+      metric: item.metric || '',
+      delta: item.delta || '',
       flat: item.flat || '',
       next: item.next || item.conclusion || ''
     }))
@@ -72,7 +75,7 @@ function finishedTodos(tasks) {
 }
 
 export async function composeMeeting(env, cloud, meetings, tasks, profile, experiments, kind) {
-  const local = writeMeeting(meetings, tasks, profile, kind);
+  const local = attachWeekRuns(writeMeeting(meetings, tasks, profile, kind), experiments, kind);
   if (kind === 'todos') {
     const settled = finishedTodos(tasks);
     if (settled) return settled;
@@ -87,8 +90,16 @@ export async function composeMeeting(env, cloud, meetings, tasks, profile, exper
     const written = present(kind, generated);
     const blocked = experiments.some((item) => /还没有跑对照|没有真实实验指标/.test(`${item.flat || ''}${item.result || ''}`));
     if (written && blocked && /完成执行|已跑完|跑完|初稿|可复现|正面与负面|全部运行/.test(written.text)) return local;
-    return written || local;
+    return attachWeekRuns(written, experiments, kind) || local;
   } catch {
     return local;
   }
+}
+
+function attachWeekRuns(result, experiments, kind) {
+  if (!result || (kind !== 'report' && kind !== 'weekly')) return result;
+  const runs = runsThisWeek(experiments);
+  const note = runs.length ? '本周实验表照搬科研记录，没有填写的指标保持空白。' : '本周科研记录里还没有实验。';
+  const text = result.text.includes(note) ? result.text : `${result.text}\n\n${note}`;
+  return { ...result, text, runs };
 }

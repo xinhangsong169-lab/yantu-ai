@@ -1,3 +1,5 @@
+import { applyFilters, filterLabel, keywordTokens } from '../src/lib/career-keywords.mjs';
+
 const SOURCE = 'https://www.ncss.cn/ncss/zt/gqzp2026.shtml';
 const BLOCKED = /(zhipin|zhaopin\.com|51job|liepin|lagou|bosszhipin|kanzhun|veryeast|jobui|yingjiesheng|shixiseng)/i;
 const cache = new Map();
@@ -31,11 +33,9 @@ function parseList(html) {
   }
 }
 
-export async function searchOfficialNotices(profile = {}) {
-  const major = profile.major || '计算机';
-  const query = `${major} 国企 央企 校园招聘 官网通知`;
-  const cached = cache.get('official');
-  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return { ...cached.result, query };
+async function loadNotices() {
+  const cached = cache.get('official-list');
+  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached.items;
   const response = await fetch(SOURCE, {
     headers: { 'User-Agent': 'yantu-ai/0.1', 'Accept-Language': 'zh-CN,zh;q=0.9' },
     signal: AbortSignal.timeout(15000)
@@ -43,7 +43,6 @@ export async function searchOfficialNotices(profile = {}) {
   if (!response.ok) throw new Error('官网通知没有取到');
   const html = await response.text();
   const today = todayISO();
-  const focus = [major, profile.direction, '计算机', '信息', '软件', '人工智能', '数字化'].filter(Boolean);
   const notices = parseList(html)
     .map((item) => ({
       title: unescapeHtml(item.title).slice(0, 80),
@@ -57,13 +56,22 @@ export async function searchOfficialNotices(profile = {}) {
       endAt: isoOf(item.endDate)
     }))
     .filter((item) => item.title && item.url.startsWith('http') && !BLOCKED.test(item.url))
-    .filter((item) => !item.endAt || item.endAt >= today)
+    .filter((item) => !item.endAt || item.endAt >= today);
+  if (notices.length) cache.set('official-list', { at: Date.now(), items: notices });
+  return notices;
+}
+
+export async function searchOfficialNotices(profile = {}, filters = null) {
+  const view = applyFilters(profile, filters);
+  const query = filterLabel(view);
+  const tokens = keywordTokens(query);
+  const notices = (await loadNotices())
     .map((item) => {
       const reasons = ['国家大学生就业服务平台公布的国企招聘通知'];
-      let score = 4;
+      let score = 1;
       if (/mp\.weixin\.qq\.com/.test(item.url)) score -= 3;
-      for (const token of focus) {
-        if (token.length >= 2 && `${item.title}${item.company}`.includes(token)) {
+      for (const token of tokens) {
+        if (`${item.title}${item.company}`.includes(token)) {
           score += 3;
           reasons.push(`通知里写到${token}`);
         }
@@ -72,7 +80,11 @@ export async function searchOfficialNotices(profile = {}) {
     })
     .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title, 'zh'))
     .slice(0, 8);
-  const result = { query, source: '国家大学生就业服务平台', jobs: notices };
-  if (notices.length) cache.set('official', { at: Date.now(), result });
-  return result;
+  const matched = notices.some((item) => item.score > 1);
+  return {
+    query,
+    source: '国家大学生就业服务平台',
+    jobs: notices,
+    notice: matched ? '' : '这些官网通知里没有直接写到当前筛选，下面仍是还在有效期内的招聘通知。'
+  };
 }

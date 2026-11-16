@@ -22,12 +22,12 @@ type WorkspaceValue = {
   setProfileOpen: (open: boolean) => void;
   threads: Record<string, ChatMessage[]>;
   sending: string | null;
-  sendChat: (scope: string, message: string, contextEnabled: boolean) => Promise<void>;
+  sendChat: (scope: string, message: string, contextEnabled: boolean, cite?: ChatMessage['cite']) => Promise<void>;
   retrievals: Record<string, ContextItem[]>;
   composer: Composer | null;
   ask: (scope: PageId, text: string) => void;
-  pinned: { page: PageId; id: string } | null;
-  openRecord: (page: PageId, id: string) => void;
+  pinned: { page: PageId; id: string; focus?: string } | null;
+  openRecord: (page: PageId, id: string, focus?: string) => void;
 };
 
 const WorkspaceContext = createContext<WorkspaceValue | null>(null);
@@ -44,7 +44,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const [retrievals, setRetrievals] = useState<Record<string, ContextItem[]>>({});
   const [sending, setSending] = useState<string | null>(null);
   const [composer, setComposer] = useState<Composer | null>(null);
-  const [pinned, setPinned] = useState<{ page: PageId; id: string } | null>(null);
+  const [pinned, setPinned] = useState<{ page: PageId; id: string; focus?: string } | null>(null);
   const conversationIds = useRef<Record<string, string>>({});
 
   const notify = (message: string) => {
@@ -84,9 +84,13 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     notify(mode === 'demo' ? '已恢复演示档案' : '已清空为空白档案');
   };
 
-  const sendChat = async (scope: string, message: string, contextEnabled: boolean) => {
+  const sendChat = async (scope: string, message: string, contextEnabled: boolean, cite?: ChatMessage['cite']) => {
     const text = message.trim();
-    if (!text || sending) return;
+    if ((!text && !cite) || sending) return;
+    const shown = cite ? '这段能支持什么？' : text;
+    const payload = cite
+      ? `只根据下面这段原文回答它能支持什么、不能支持什么。原文没有写到的不要补。\n文献：${cite.title}\n原文：「${cite.quote}」`
+      : text;
     const userId = crypto.randomUUID();
     const assistantId = crypto.randomUUID();
     setSending(scope);
@@ -94,15 +98,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       ...current,
       [scope]: [
         ...(current[scope] || []),
-        { id: userId, role: 'user', content: text },
-        { id: assistantId, role: 'assistant', content: '', pending: true, phase: 'profile' }
+        { id: userId, role: 'user', content: shown, cite },
+        { id: assistantId, role: 'assistant', content: '', pending: true, phase: 'profile', cite }
       ]
     }));
     try {
       const result = await api.streamChat(
         {
           scope,
-          message: text,
+          message: payload,
           conversationId: conversationIds.current[scope],
           contextEnabled
         },
@@ -174,8 +178,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     setComposer({ scope, text, nonce: Date.now() });
   };
 
-  const openRecord = (next: PageId, id: string) => {
-    setPinned({ page: next, id });
+  const openRecord = (next: PageId, id: string, focus?: string) => {
+    setPinned({ page: next, id, focus });
     setPage(next);
   };
 

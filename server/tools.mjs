@@ -162,7 +162,7 @@ export async function findLiterature(profile, query) {
     if (!response.ok) throw new Error(`文献检索没有完成（HTTP ${response.status}）`);
     xml = await response.text();
   } catch {
-    throw new Error('文献库这次没有连上，没有编造论文');
+    throw new Error('文献库暂时无法连接，请稍后重试');
   }
   const items = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((match) => {
     const block = match[1];
@@ -182,9 +182,16 @@ export async function findLiterature(profile, query) {
 
 export function briefCareer(profile, jobs, projects) {
   const notices = jobs.some((job) => job.kind === 'notice');
-  if (!jobs.length) {
-    return { title: notices ? '官网通知还没取到' : '岗位还没检索到', text: notices ? '国企和央企只看官网通知，这里不会改用招聘平台的岗位。' : '先在左边按专业检索 BOSS 直聘。这里只梳理已经找到的岗位，不会另编一份。', items: [] };
+  const listed = jobs.filter((job) => job.kind !== 'search');
+  const entry = jobs.find((job) => job.kind === 'search');
+  if (!listed.length) {
+    return {
+      title: notices ? '官网通知还没取到' : '这次没有打开到岗位页',
+      text: entry?.snippet || (notices ? '国企和央企只看官网通知，这里不会改用招聘平台的岗位。' : '先在左边按筛选查看。这里只梳理已经打开到的岗位，不会另编一份。'),
+      items: entry ? [{ title: entry.title, href: entry.url, note: '检索入口，不是一条岗位' }] : []
+    };
   }
+  jobs = listed;
   const ranked = [...jobs].sort((a, b) => (b.score || 0) - (a.score || 0));
   const first = ranked.filter((job) => (job.score || 0) >= 8);
   const later = ranked.filter((job) => (job.score || 0) < 8);
@@ -196,7 +203,8 @@ export function briefCareer(profile, jobs, projects) {
     title: '这批岗位怎么看',
     text: [
       `专业 ${profile.major || '未填'}，方向 ${profile.direction || '未填'}，城市 ${profile.locations || '未填'}。`,
-      notices ? '下面是官网招聘通知，不是招聘平台上的岗位。' : first.length ? `先看 ${first.length} 个和专业、学历或方向对得上的。` : '还没有一份同时对上专业和学历，下面按关键词远近排列。',
+      notices ? '下面是官网招聘通知，不是招聘平台上的岗位。' : '下面只保留打开到的岗位页，或收录标题里的职位和公司。薪资只在岗位页读到时才填。',
+      first.length ? `先看 ${first.length} 个和专业、学历或方向对得上的。` : '还没有一份同时对上专业和学历。',
       projects[0] ? `面试时可以讲的课题：${projects[0].title}。` : ''
     ].filter(Boolean).join('\n'),
     items

@@ -199,4 +199,5 @@ export type ChatMessage = {
   phase?: 'profile' | 'model' | 'writing' | 'done';
   sawMemory?: boolean;
   sawMaterials?: boolean;
+  cite?: { paperId: string; projectId: string; title: string; quote: string };
 };

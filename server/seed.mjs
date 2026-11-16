@@ -17,7 +17,11 @@ export function demoRecords() {
       {id:'demo-task-course',title:'完成机器学习课程实验报告',description:'提交前核对实验分析与引用。',sourceType:'course',sourceId:'demo-course-ml',dueAt:'2026-11-15',priority:'medium',status:'todo',evidence:'演示课程作业（示例）'}
     ],
     papers:[{id:'demo-paper',title:'Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks',authors:'Lewis et al.',year:'2020',url:'https://arxiv.org/abs/2005.11401',projectId,note:'阅读笔记示例：区分检索质量与生成质量，实验需要分别记录。',status:'reading',answers:'检索质量和生成质量要分开记，不能用一个总分代替检索。',method:'先检索，再把检索到的材料交给生成。',gap:'还没有在当前课题的数据划分上核对这篇的设置。'}],
-    experiments:[{id:'demo-experiment',title:'检索数据质量检查',projectId,date:'2026-11-10',meetingId:'demo-meeting',change:'核对重复样本和标签分布',control:'固定数据划分',metric:'',delta:'',flat:'还没有跑对照，不能说有没有提升',next:'补齐同预算基线',evidence:'先核对检索数据集中的重复样本和标签分布。',setup:'固定数据划分；核对重复样本和标签分布。',result:'',conclusion:'下一步先确认数据划分，再执行同预算对照。'}],
+    experiments:[
+      {id:'demo-experiment',title:'检索数据质量检查',projectId,date:'2026-11-10',meetingId:'demo-meeting',change:'核对重复样本和标签分布',control:'固定数据划分',metric:'',delta:'',flat:'还没有跑对照，不能说有没有提升',next:'补齐同预算基线',evidence:'先核对检索数据集中的重复样本和标签分布。演示记录，不是真实实验结果。',setup:'固定数据划分；核对重复样本和标签分布。',result:'',conclusion:'下一步先确认数据划分，再执行同预算对照。'},
+      {id:'demo-experiment-baseline',title:'同预算基线',projectId,date:'2026-11-11',meetingId:'demo-meeting',change:'补上同数据划分、同候选集合、同计算预算的基线',control:'现有检索模型',metric:'Recall@10',delta:'32.1（演示）',flat:'演示填入的对照读数，不是真实实验结果。',next:'同一设置下再跑一档难负样本',evidence:'固定数据划分和计算预算，比较基线与改进模型。',setup:'同划分、同候选、同预算。',result:'演示读数 32.1',conclusion:'只作为表格演示，不能当成课题结论。'},
+      {id:'demo-experiment-hard',title:'难负样本',projectId,date:'2026-11-12',meetingId:'demo-meeting',change:'在同一预算下加入难负样本',control:'同预算基线 32.1（演示）',metric:'Recall@10',delta:'-0.2（演示）',flat:'这一档没有超过基线。演示数据，不是真实实验结果。',next:'保留这一档负面结果，再决定要不要改重排序',evidence:'下周组会前整理结果表，保留没有提升的结果，不要只汇报最好的一个数。',setup:'与基线相同的划分和预算，只改负样本。',result:'演示读数相对基线 -0.2',conclusion:'负面结果保留在表里。'}
+    ],
     memories:[
       {id:'demo-memory-direction',key:'当前研究方向',value:'多模态检索与 RAG',domain:'research',sourceType:'profile',sourceId:'profile',sourceLabel:'演示个人档案',confirmed:true,active:true,updatedAt:date},
       {id:'demo-memory-feedback',key:'最近的导师要求',value:'固定数据划分和计算预算，比较基线与改进模型。',domain:'meetings',sourceType:'meeting',sourceId:'demo-meeting',sourceLabel:'11 月 6 日组会 · 演示记录',confirmed:true,active:true,updatedAt:date},
