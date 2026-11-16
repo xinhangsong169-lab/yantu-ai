@@ -4,6 +4,16 @@
 
 文献放在科研课题里，不单独做文献库。就业包含实习、校招和国企与央企。实习和校招岗位来自 Offer岛；国企与央企使用国家大学生就业服务平台的官网通知。岗位是否仍在招聘需查看原页面。
 
+## 核心技术架构
+
+研途 AI 采用 React 单页应用与 Node.js API。开发时由 Vite 代理 `/api` 请求，生产环境由 Node 同时提供构建后的页面和接口。
+
+- **前端**使用 React 19、TypeScript 和 Vite 6。[`src/App.tsx`](src/App.tsx) 负责页面入口，[工作区状态](src/store.tsx) 供课程、组会、科研等页面复用，[接口客户端](src/api.ts) 封装 JSON 请求和 SSE 对话事件。
+- **后端**使用 Node.js 22 的 HTTP 服务。[服务入口](server/local.mjs) 提供静态页面和同源 API，[业务接口](server/api.mjs) 负责输入校验、组装模型上下文、确认写入和返回材料来源。
+- **数据**使用 SQLite 与 Node 内置的 `node:sqlite`。记录按工作区、集合和记录 ID 存储。组会确认时，会议、任务和记忆通过[同一事务](server/local-db.mjs)写入。
+- **AI**在服务端接入阿里云百炼的 OpenAI 兼容接口。默认用 `qwen-plus` 处理文本，`qwen3-vl-plus` 识别课表图片。助手按当前页面读取相关记录和有效记忆，对话通过 SSE 返回引用材料、日程信息和回答。模型生成的组会草稿经人工确认后才写入。
+- **外部数据与部署**方面，实习和校招接入 Offer 岛 API，国企与央企读取国家大学生就业服务平台的有效官网通知。腾讯云演示实例由 Caddy 提供 HTTPS，仓库也附有 [Dockerfile](Dockerfile)。
+
 ## 运行
 
 需要 Node.js 22.13 或更高版本。

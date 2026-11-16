@@ -183,28 +183,36 @@ def build():
         "重要写入要人确认。对话可以建议，不能自行把建议写成已完成的事实。",
     ]))
 
+    story.append(PageBreak())
     story.append(P("3  系统架构设计", "h1"))
     story.append(P("3.1  总体结构", "h2"))
     story.append(P("浏览器里是一个 React 单页应用。开发时 Vite 把页面放在 5173 端口，并把 /api 转到本机 4320。生产构建后，同一个 Node 进程同时提供静态页面和 API。数据放在一个 SQLite 文件里。模型调用从服务端发出，浏览器看不到密钥。", "body"))
     story.append(table(
         ["层", "实现", "职责"],
         [
-            ["页面", "React 19、TypeScript、自写 CSS", "工作台、课程、组会、科研、就业、任务、记忆"],
-            ["接口", "Node.js 22、server/api.mjs", "校验、确认写入、调用模型、返回来源"],
-            ["数据", "SQLite，node:sqlite", "档案、课程、组会、实验、文献、任务、记忆、岗位缓存"],
-            ["模型", "百炼兼容接口", "对话、组会草稿、课表图片。无密钥时走本地规则"],
-            ["招聘", "Offer岛 API；ncss 官网页", "实习校招；国企央企通知"],
+            ["前端", "React 19、TypeScript、Vite 6", "页面交互、工作区共享状态和 API 客户端"],
+            ["后端", "Node.js 22、原生 HTTP、JSON API、SSE", "静态文件、业务路由、输入校验、确认写入及对话事件"],
+            ["数据", "SQLite、node:sqlite", "本地持久化。跨记录写入用事务，按工作区与集合读取"],
+            ["AI", "百炼兼容接口<br/>qwen-plus、qwen3-vl-plus", "文本对话与整理、课表图片识别。无密钥时文本走本地规则"],
+            ["招聘", "Offer岛 API<br/>国家大学生就业服务平台", "按招聘类型检索并保留来源链接"],
+            ["部署", "腾讯云轻量服务器<br/>Caddy、Docker", "演示实例由 Caddy 提供 HTTPS。仓库同时提供容器部署方案"],
         ],
         [22 * mm, 52 * mm, 98 * mm],
     ))
     story.append(Spacer(1, 3 * mm))
     story.append(P("3.2  数据怎么流动", "h2"))
     story.append(P("用户已保存的材料进入 SQLite。组会原文也可先提交给分析接口生成草稿，审核后才与任务和记忆一起保存。保存时写入来源类型和来源记录。助手按页面选择现有记录和有效记忆来组织输入。", "body"))
-    story.append(P("就业检索不把模型记忆里的公司名当成结果。实习和校招把城市、研究方向和岗位类型交给 Offer岛，返回条目保留来源和链接。国企和央企读取官网通知列表，丢掉已经过期的截止日期。接口失败时，保留上次仍在有效期内的官网通知，并写明这次没有读到新通知。", "body"))
+    story.append(P("就业接口独立查询数据源并返回原链接。国企和央企通知按有效期过滤，查询失败时可使用上次仍有效的通知。", "body"))
     story.append(P("3.3  部署形态", "h2"))
-    story.append(P("默认形态是个人本机。需要 Node.js 22.13 或更高版本。npm run dev 同时拉起页面和 API。数据库文件在 .data/yantu.sqlite，已从 Git 忽略。", "body"))
+    story.append(P("本地开发由 npm run dev 启动前端和 API。生产使用同源访问，部署步骤见第 7 节。", "body"))
     story.append(P("公网评审实例运行在北京的腾讯云轻量服务器上。Windows 上的计划任务启动 Node 应用，Caddy 提供 HTTPS 并转发到本机端口。2026 年 11 月 16 日已部署新版并核对前端文件和状态接口。仓库另提供 Docker 部署方式。免登录评审实例的访问者共用一份演示库。", "body"))
 
+    story.append(P("3.4  选型理由与代码入口", "h2"))
+    story.append(P("React 与 TypeScript 把课程、组会和科研界面各自组织成组件，跨页面共用工作区状态。Vite 提供开发代理与生产构建。后端采用 Node 原生 HTTP，生产只启动一个应用进程。SQLite 将个人工作区保存在本地文件中，省去单独运行数据库服务，并支持把确认后的多条记录一次写入。", "body"))
+    story.append(P("从 src/App.tsx 进入页面，经 src/store.tsx 管理工作区状态，通过 src/api.ts 发起请求。server/local.mjs 接收请求，由 server/api.mjs 执行业务逻辑，再通过 server/local-db.mjs 持久化，或调用模型与外部检索服务。", "body"))
+    story.append(P("对话接口先读取当前页面范围内的材料，再请求模型。浏览器通过 SSE 接收来源、可选日程和回答事件。文本模型返回完整回答后，后端按行推送给浏览器。组会分析和确认分别使用两个接口，只有确认接口写入 SQLite。", "body"))
+
+    story.append(PageBreak())
     story.append(P("4  AI 技术方案", "h1"))
     story.append(P("4.1  选型理由", "h2"))
     story.append(P("作品需要两类模型能力。第一类是中文长文：组会记录、周报、科研对话和就业方向讨论。第二类是课表图片：从照片里抽出能看清的课程名、时间和地点。阿里云百炼提供与 OpenAI 兼容的对话接口，文本模型使用 qwen-plus，视觉模型使用 qwen3-vl-plus。接口在服务端调用，便于统一超时、错误提示和密钥隔离。", "body"))
