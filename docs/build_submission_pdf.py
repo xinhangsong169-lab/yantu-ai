@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""省赛技术文档。队员姓名留空，提交前按报名表填写。"""
+"""省赛技术文档。"""
+
+from pathlib import Path
 
 from reportlab.lib.colors import Color, white
 from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
@@ -22,7 +24,8 @@ PALE = Color(0.91, 0.95, 0.92)
 LINE = Color(0.76, 0.82, 0.78)
 MUTED = Color(0.33, 0.38, 0.36)
 
-OUT = "/Users/songxinhang/chuanzhibei-cursor/docs/研途AI-省赛技术文档.pdf"
+DOCS = Path(__file__).resolve().parent
+OUT = DOCS / "研途AI-省赛技术文档.pdf"
 
 
 def styles():
@@ -56,7 +59,7 @@ def bullet(items):
 
 
 def shot(name, caption):
-    path = f"/Users/songxinhang/chuanzhibei-cursor/docs/figures/{name}"
+    path = str(DOCS / "figures" / name)
     img = Image(path, width=168 * mm, height=168 * mm * 900 / 1440)
     img.hAlign = "CENTER"
     return KeepTogether([img, Spacer(1, 1.5 * mm), Paragraph(caption, S["cap"])])
@@ -108,7 +111,9 @@ def build():
     story.append(Spacer(1, 16 * mm))
     story.append(P("赛道页：https://www.boxuegu.com/matchTrack/detail/?id=10037", "note"))
     story.append(P("文档日期：2026 年 11 月 16 日", "note"))
-    story.append(P("队员与指导老师：按报名表填写，本文不预填姓名", "note"))
+    story.append(P("西安交通大学 · 软件工程 · 硕士研究生", "note"))
+    story.append(P("队员：宋欣航、王渡云、朱柏鸿", "note"))
+    story.append(P("指导老师：王迪、刘帅", "note"))
     story.append(PageBreak())
 
     story.append(P("目录", "h1"))
@@ -142,13 +147,13 @@ def build():
             ["赛道", "AI WEB 网页开发挑战赛"],
             ["主题", "智启未来：AI 驱动的 Web 应用创新挑战"],
             ["作品形态", "Web 应用。浏览器打开，前后端都在本机或一台服务器上运行"],
-            ["使用者", "硕士、博士个人。对应赛道中的研究生组，是否已按该组别报名以个人中心为准"],
+            ["目标用户", "需要自行管理课程、组会、实验和求职的硕士与博士研究生"],
             ["代码仓库", "https://github.com/xinhangsong169-lab/yantu-ai"],
         ],
         [32 * mm, 140 * mm],
     ))
     story.append(Spacer(1, 3 * mm))
-    story.append(P("公开仓库目前不等于本机最新代码。就业接入、评审部署和页面调整仍有未推送改动。交仓库前需要先审查差异，确认密钥和数据库没有进入暂存区，再提交并推送。", "body"))
+    story.append(P("仓库提供源码、运行说明、测试脚本和技术文档。第 6 节列出主要接口和实现文件，可按项目路径直接定位。", "body"))
 
     story.append(P("2  需求分析", "h1"))
     story.append(P("2.1  使用者", "h2"))
@@ -194,11 +199,11 @@ def build():
     ))
     story.append(Spacer(1, 3 * mm))
     story.append(P("3.2  数据怎么流动", "h2"))
-    story.append(P("用户在页面上的原文先进入 SQLite。组会整理、课题脉络和日程解释会先生成草稿。用户点确认，服务端才写入任务或记忆，并记下来源类型和来源记录。之后任意页面的对话在组上下文时，只读取仍然有效的记忆和用户自己的记录。", "body"))
+    story.append(P("用户已保存的材料进入 SQLite。组会原文也可先提交给分析接口生成草稿，审核后才与任务和记忆一起保存。保存时写入来源类型和来源记录。助手按页面选择现有记录和有效记忆来组织输入。", "body"))
     story.append(P("就业检索不把模型记忆里的公司名当成结果。实习和校招把城市、研究方向和岗位类型交给 Offer岛，返回条目保留来源和链接。国企和央企读取官网通知列表，丢掉已经过期的截止日期。接口失败时，保留上次仍在有效期内的官网通知，并写明这次没有读到新通知。", "body"))
     story.append(P("3.3  部署形态", "h2"))
     story.append(P("默认形态是个人本机。需要 Node.js 22.13 或更高版本。npm run dev 同时拉起页面和 API。数据库文件在 .data/yantu.sqlite，已从 Git 忽略。", "body"))
-    story.append(P("评审如果需要公网地址，可以使用单实例容器。容器只监听本机端口，由 HTTPS 反向代理转发。2026 年 11 月 14 日，北京一台腾讯云轻量服务器曾以免登录方式打开 https://49.232.193.126 ，并检查过工作台对话和 Offer岛岗位。该地址是当时的结果。2026 年 11 月 16 日没有重新检查证书和可用性。所有访问者共用同一份演示库。", "body"))
+    story.append(P("公网评审实例运行在北京的腾讯云轻量服务器上。Windows 上的计划任务启动 Node 应用，Caddy 提供 HTTPS 并转发到本机端口。2026 年 11 月 16 日已部署新版并核对前端文件和状态接口。仓库另提供 Docker 部署方式。免登录评审实例的访问者共用一份演示库。", "body"))
 
     story.append(P("4  AI 技术方案", "h1"))
     story.append(P("4.1  选型理由", "h2"))
@@ -253,6 +258,7 @@ def build():
     story.append(shot("11-tasks.png", "图 11  同一周里的任务。组会任务保留导师原话作为依据。"))
     story.append(shot("12-memory.png", "图 12  个人记忆。组会、科研、就业各看自己的条目，可以停用或删除。"))
 
+    story.append(PageBreak())
     story.append(P("6  核心功能实现", "h1"))
     story.append(P("6.1  工作台与课程", "h2"))
     story.append(P("工作台汇总今天的课程和日期最近的未完成任务。日期用「今天」「昨天」「计划日期：后天」这种说法。有密钥时回答来自 qwen-plus；没有密钥时标明本地整理。课表接受手动添加，以及 ICS、CSV 和文字。图片识别只保留模型声明能看清的字段，确认后才写入。", "body"))
@@ -261,6 +267,23 @@ def build():
     story.append(P("6.3  就业、任务与记忆", "h2"))
     story.append(P("实习和校招调用 Offer岛。薪资或截止时间没有返回时留空。国企和央企读取国家大学生就业服务平台的通知，丢掉已经过期的条目。任务和记忆使用同一套记录。停用或删除后，后续组上下文不再带上这条。", "body"))
 
+    story.append(P("6.4  从输入到可追溯结果", "h2"))
+    story.append(P("以林同学准备组会为例。导师要求先核对数据，再在固定预算下跑对照。研途保留输入原文，分别处理待办和实验结果。确认待办会形成任务，任务完成状态和科研指标仍属于不同记录。", "body"))
+    story.append(table(
+        ["环节", "实现与数据约束", "代码入口"],
+        [
+            ["组会草稿", "分析接口接收原文。云端模型返回摘要、明确要求、建议和未决问题。服务端校验输出结构、任务日期和逐字引用。无密钥时由本地规则提取。", "POST /api/meetings/analyze · server/api.mjs"],
+            ["确认写入", "再次核对引用并校验关联课题。会议、任务和记忆采用 SQLite 批量事务保存，写入失败则回滚。任务用 sourceId 关联会议，同一草稿重复确认时返回已有记录。", "POST /api/meetings/confirm · server/local-db.mjs"],
+            ["本周实验", "按上海时区从周一至当天取实验记录。周报和汇报稿沿用记录字段，未填项保留空白。演示中「还没有跑对照，不能说有没有提升」是用户原话。", "POST /api/meetings/write · server/research-week.mjs"],
+            ["后续提问", "按页面域筛选已确认且启用的记忆。可定位到来源记录的条目还会检查原记录是否存在。回答连同本次参考材料的摘要返回。", "POST /api/ai/chat · server/api.mjs"],
+        ],
+        [25 * mm, 99 * mm, 48 * mm],
+    ))
+    story.append(P("6.5  第三方检索的字段处理", "h2"))
+    story.append(P("Offer岛查询使用首选城市、研究方向关键词、实习或校招类型，单次请求最多取 30 条。服务端过滤缺失职位名或合法编号的条目，按档案技能与岗位材料的词面匹配排序，最多展示 6 条。薪资和截止日期留空，岗位原链接保留。限流与鉴权失败分别处理。国企、央企使用独立的官网通知查询路径。", "body"))
+    story.append(P("代码入口为 /api/career/search、server/offerdao.mjs 和 server/official.mjs。岗位检索返回的是来源提供的数据。技能匹配分表示材料中找到的对应词数，可供用户阅读岗位时参考。", "body"))
+
+    story.append(PageBreak())
     story.append(P("7  测试与部署", "h1"))
     story.append(P("7.1  本地运行", "h2"))
     story.append(P("环境要求 Node.js 22.13 或更高。复制 .env.example 为 .env 后填写密钥。不填写密钥也可以启动。命令是 npm install 与 npm run dev。页面地址是 http://127.0.0.1:5173 ，API 地址是 http://127.0.0.1:4320 。修改 server 目录下的文件后需要重启 API，Vite 不会热更新服务端。", "body"))
@@ -269,12 +292,25 @@ def build():
         "npm run build 会先做 TypeScript 检查，再做生产构建。2026 年 11 月 16 日的页面调整在本地生产构建中通过。",
         "tests/workbench-api.test.mjs 与 tests/cloud-server.test.mjs 使用隔离的临时 SQLite，不读写 .data/yantu.sqlite。",
         "组会助手收起和展开、科研页从正文打开助手、工作台日期措辞，已在桌面宽度的 Chrome 中看过。窄屏和完整业务路径还没有逐项再测。",
-        "2026 年 11 月 14 日曾从公网打开评审地址，检查过 HTTPS、工作台对话和 Offer岛岗位。该结果不自动代表 11 月 16 日仍可访问。",
+        "2026 年 11 月 16 日从公网核对 HTTPS 首页、前端文件 SHA-256、健康检查和工作台状态接口。云端模型和岗位来源的逐项检索留待单独回归。",
     ]))
+    story.append(P("自动化验证结果", "h2"))
+    story.append(table(
+        ["验证场景", "检查内容", "结果"],
+        [
+            ["工作台与日程", "隔离库中验证工作台回答及日程解析可调用所需函数。", "通过"],
+            ["受保护评审", "认证、来源限制和运行重启后的数据持久化。", "通过"],
+            ["启动配置", "配置缺失时启动失败。", "通过"],
+            ["公开评审", "允许匿名访问，同时拒绝来自其他站点的写入来源。", "通过"],
+        ],
+        [38 * mm, 113 * mm, 21 * mm],
+    ))
+    story.append(P("复现命令为 node --test tests/*.test.mjs。上述测试共 4 项，使用隔离的临时数据库。第三方平台响应和模型答案质量单独通过功能演示核对。", "body"))
     story.append(P("7.3  部署注意", "h2"))
     story.append(P("密钥、评审密码和 SQLite 文件不进入 Git。仓库提供 .env.example 和 .gitignore。.env、.data 和服务器上的私有环境文件只留在运行机器上。演示库可以恢复「林同学」示例，也可以清空。示例实验和示例课程都标了演示，不能当成真实研究结果。", "body"))
-    story.append(P("公网演示若继续使用，需要单独确认证书是否仍有效、进程是否随开机恢复，以及内地 IP 直接提供网站是否还要备案。这些没有在本文日期重新实测。最新页面调整尚未部署到那台服务器。", "body"))
+    story.append(P("更新应用前备份旧版，替换程序后重启应用计划任务，并检查新版首页和静态资源。部署机上的私有环境文件和演示数据库与应用程序分开存放。", "body"))
 
+    story.append(PageBreak())
     story.append(P("8  创新点", "h1"))
     story.append(P("8.1  技术创新点", "h2"))
     story.append(bullet([
@@ -293,11 +329,11 @@ def build():
 
     story.append(P("9  总结与展望", "h1"))
     story.append(P("研途 AI 把研究生已经写下的课表、组会、实验和档案收成一个 Web 工作台。大模型负责整理和问答，来源接口负责招聘事实，确认动作负责把建议变成记录。没有密钥时，系统退回本地整理并标明，不把规则输出伪装成模型结论。", "body"))
-    story.append(P("交省赛稿之前还要完成三件与本文配套的事：把本机改动审查后推到公开仓库，并在 README 写上报名表中的团队信息；录一条 5 至 8 分钟、不低于 1080p 的普通话演示视频；到赛事个人中心核对截止时间并上传。在线演示可以后补，不作为本文已重新验证的地址。", "body"))
-    story.append(P("后续可以做的事也限于已经露出的缺口：Offer岛目前不按专业和学历筛选；窄屏还没有完整走查；公网演示的证书、开机恢复和备案状态需要在真正提交网址前再查一次。这些不改变本文已经实现的边界：事实与建议分开，空着的结果保持空白。", "body"))
+    story.append(P("代码已推到公开仓库，演示视频和技术文档已在本机备好。提交前到赛事个人中心核对截止时间，并上传仓库地址、PDF 和 MP4。可登录赛事个人中心另填公网演示地址。", "body"))
+    story.append(P("后续可以做的事也限于已经露出的缺口：Offer岛目前不按专业和学历筛选；窄屏还没有完整走查；公网实例的开机恢复和第三方服务额度可另行走查。这些不改变本文已经实现的边界：事实与建议分开，空着的结果保持空白。", "body"))
 
     doc = SimpleDocTemplate(
-        OUT, pagesize=A4,
+        str(OUT), pagesize=A4,
         leftMargin=18 * mm, rightMargin=18 * mm,
         topMargin=16 * mm, bottomMargin=16 * mm,
         title="研途 AI 省赛技术文档",
